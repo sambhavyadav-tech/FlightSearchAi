@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from datetime import date, timedelta
+from datetime import datetime, timedelta
 import pandas as pd
 import random
 
@@ -76,10 +76,9 @@ def search_flights(token, origin, destination, dep_date, adults, children, trave
         st.error(f"❌ Unexpected error: {e}")
         st.stop()
 
-# ------------------ UI ------------------
+# ------------------ SEARCH UI ------------------
 st.subheader("🔍 Search Flights")
 
-# Airport input with search
 col1, col2 = st.columns(2)
 with col1:
     from_query = st.text_input("From (City / Airport)")
@@ -107,7 +106,6 @@ with col2:
             to_label = st.selectbox("Select Destination", to_options.keys())
             dest_code = to_options[to_label]
 
-# Passenger and class
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     dep_date = st.date_input("Departure Date", min_value=date.today() + timedelta(days=1))
@@ -122,12 +120,8 @@ search = st.button("🔎 Search Flights")
 
 # ------------------ SEARCH RESULTS ------------------
 if search and origin_code and dest_code:
-    data = search_flights(
-        token, origin_code, dest_code, dep_date.isoformat(),
-        adults, children, travel_class
-    )
+    data = search_flights(token, origin_code, dest_code, dep_date.isoformat(), adults, children, travel_class)
 
-    # Simulate best coupons & card
     BEST_OFFERS = [
         {"coupon": "FLY500", "card": "HDFC Credit Card"},
         {"coupon": "AIR250", "card": "SBI Debit Card"},
@@ -137,18 +131,24 @@ if search and origin_code and dest_code:
     flights = []
     for f in data["data"]:
         segment = f["itineraries"][0]["segments"][0]
+        dep_time = datetime.fromisoformat(segment["departure"]["at"])
+        arr_time = datetime.fromisoformat(segment["arrival"]["at"])
+        duration = arr_time - dep_time
+        duration_str = str(duration).split(".")[0]  # HH:MM:SS
+
         base_price = float(f["price"]["base"])
         total_price = float(f["price"]["total"])
         offer = random.choice(BEST_OFFERS)
-        after_offer = int(total_price * 0.95)  # simulate 5% off for best card
+        final_price = int(total_price * 0.95)  # simulate offer
 
         flights.append({
             "Airline": data["dictionaries"]["carriers"][segment["carrierCode"]],
-            "Departure": segment["departure"]["at"],
-            "Arrival": segment["arrival"]["at"],
+            "Departure": dep_time.strftime("%a, %b %d, %Y • %H:%M"),
+            "Arrival": arr_time.strftime("%a, %b %d, %Y • %H:%M"),
+            "Duration": duration_str,
             "BaseFare": int(base_price),
             "FareBeforeOffer": int(total_price),
-            "FinalFare": after_offer,
+            "FinalFare": final_price,
             "Coupon": offer["coupon"],
             "Card": offer["card"],
             "Book": f"https://www.google.com/flights?hl=en#flt={origin_code}.{dest_code}.{dep_date}"
@@ -166,8 +166,9 @@ if search and origin_code and dest_code:
                 with st.container():
                     c1, c2, c3, c4, c5, c6 = st.columns([1.5, 2, 2, 1.5, 2, 1])
                     c1.markdown(f"### {r['Airline']}")
-                    c2.write(f"🕒 {r['Departure']} → {r['Arrival']}")
-                    c3.markdown(f"**Base Fare:** ₹{r['BaseFare']}\n**Before Offers:** ₹{r['FareBeforeOffer']}\n**After Offer:** ₹{r['FinalFare']}")
+                    c2.markdown(f"<span style='background-color:#FFD700;padding:3px;border-radius:4px;'>🕒 {r['Departure']} → {r['Arrival']}</span>", unsafe_allow_html=True)
+                    c3.markdown(f"<span style='background-color:#FFD700;padding:3px;border-radius:4px;'>⏱ Duration: {r['Duration']}</span>\n"
+                                f"<span style='background-color:#FFD700;padding:3px;border-radius:4px;'>💰 Base: ₹{r['BaseFare']}\nFare: ₹{r['FareBeforeOffer']}\nAfter Offer: ₹{r['FinalFare']}</span>", unsafe_allow_html=True)
                     c4.markdown(f"🏷 Coupon: {r['Coupon']}")
                     c5.markdown(f"💳 Card: {r['Card']}")
                     c6.markdown(
