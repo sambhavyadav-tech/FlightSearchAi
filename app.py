@@ -68,7 +68,7 @@ with col3:
 st.caption(f"Route: **{origin} ({AIRPORTS[origin]}) → {destination} ({AIRPORTS[destination]})**")
 
 # ---------------- AMADEUS AUTH ----------------
-@st.cache_data(ttl=3500)
+@st.cache_data(ttl=3000)
 def get_amadeus_token():
     url = "https://test.api.amadeus.com/v1/security/oauth2/token"
     payload = {
@@ -76,10 +76,15 @@ def get_amadeus_token():
         "client_id": st.secrets["AMADEUS_CLIENT_ID"],
         "client_secret": st.secrets["AMADEUS_CLIENT_SECRET"]
     }
-    r = requests.post(url, data=payload)
-    r.raise_for_status()
-    return r.json()["access_token"]
 
+    r = requests.post(url, data=payload)
+
+    if r.status_code != 200:
+        st.error("❌ Amadeus authentication failed")
+        st.stop()
+
+    return r.json()["access_token"]
+    
 # ---------------- FLIGHT SEARCH ----------------
 @st.cache_data(ttl=3600)
 def search_flights(origin, destination, travel_date):
