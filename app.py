@@ -166,9 +166,12 @@ if search and origin_code and dest_code:
                 with st.container():
                     c1, c2, c3, c4, c5, c6 = st.columns([1.5, 2, 2, 1.5, 2, 1])
                     c1.markdown(f"### {r['Airline']}")
-                    c2.markdown(f"<span style='background-color:#FFD700;padding:3px;border-radius:4px;'>🕒 {r['Departure']} → {r['Arrival']}</span>", unsafe_allow_html=True)
-                    c3.markdown(f"<span style='background-color:#FFD700;padding:3px;border-radius:4px;'>⏱ Duration: {r['Duration']}</span>\n"
-                                f"<span style='background-color:#FFD700;padding:3px;border-radius:4px;'>💰 Base: ₹{r['BaseFare']}\nFare: ₹{r['FareBeforeOffer']}\nAfter Offer: ₹{r['FinalFare']}</span>", unsafe_allow_html=True)
+                    c2.write(f"🕒 {r['Departure']} → {r['Arrival']}")
+                    c3.markdown(
+                         f"<span style='color:#FFD700;font-weight:bold;'>⏱ Duration: {r['Duration']}</span>\n"
+                         f"<span style='color:#FFD700;font-weight:bold;'>💰 Base: ₹{r['BaseFare']} | Fare: ₹{r['FareBeforeOffer']} | After Offer: ₹{r['FinalFare']}</span>",
+                          unsafe_allow_html=True  )
+
                     c4.markdown(f"🏷 Coupon: {r['Coupon']}")
                     c5.markdown(f"💳 Card: {r['Card']}")
                     c6.markdown(
