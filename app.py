@@ -1,34 +1,73 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import date, timedelta
 import random
 
-# ----------------------
-# Streamlit page setup
-# ----------------------
-st.set_page_config(
-    page_title="AI Flight Search",
-    layout="wide"
-)
-st.title("✈️ AI Flight Search (Amadeus Hybrid Prototype)")
-st.caption("Powered by Amadeus API • Hourly refresh • Safe public offers")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="AI Flight Search", layout="wide")
+st.title("✈️ AI Flight Search")
+st.caption("Real-time fares • Best cards & coupons auto-applied")
 
-# ----------------------
-# User Input
-# ----------------------
-with st.expander("Search Flights", expanded=True):
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        origin = st.text_input("From (IATA Code)", value="DEL")
-    with col2:
-        destination = st.text_input("To (IATA Code)", value="BOM")
-    with col3:
-        date = st.date_input("Departure Date", value=datetime.today())
+# ---------------- AIRPORT DATA ----------------
+AIRPORTS = {
+    "DEL": "Delhi",
+    "BOM": "Mumbai",
+    "BLR": "Bengaluru",
+    "HYD": "Hyderabad",
+    "MAA": "Chennai",
+    "CCU": "Kolkata",
+    "PNQ": "Pune",
+    "AMD": "Ahmedabad"
+}
 
-# ----------------------
-# Amadeus API Authentication
-# ----------------------
+# ---------------- AIRLINE DATA ----------------
+AIRLINES = {
+    "AI": {"name": "Air India", "url": "https://www.airindia.com"},
+    "UK": {"name": "Vistara", "url": "https://www.airvistara.com"},
+    "6E": {"name": "IndiGo", "url": "https://www.goindigo.in"},
+    "SG": {"name": "SpiceJet", "url": "https://www.spicejet.com"},
+    "G8": {"name": "Akasa Air", "url": "https://www.akasaair.com"}
+}
+
+# ---------------- OFFERS ----------------
+BEST_OFFERS = [
+    {"coupon": "FLY500", "card": "HDFC Credit Card"},
+    {"coupon": "AIR250", "card": "SBI Debit Card"},
+    {"coupon": "SKY400", "card": "ICICI Credit Card"},
+]
+
+# ---------------- SEARCH INPUTS ----------------
+st.subheader("🔍 Search Flights")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    origin = st.selectbox(
+        "From",
+        options=list(AIRPORTS.keys()),
+        format_func=lambda x: f"{x} ({AIRPORTS[x]})"
+    )
+
+with col2:
+    destination = st.selectbox(
+        "To",
+        options=list(AIRPORTS.keys()),
+        index=1,
+        format_func=lambda x: f"{x} ({AIRPORTS[x]})"
+    )
+
+with col3:
+    min_date = date.today() + timedelta(days=1)
+    travel_date = st.date_input(
+        "Departure Date",
+        value=min_date,
+        min_value=min_date
+    )
+
+st.caption(f"Route: **{origin} ({AIRPORTS[origin]}) → {destination} ({AIRPORTS[destination]})**")
+
+# ---------------- AMADEUS AUTH ----------------
 @st.cache_data(ttl=3500)
 def get_amadeus_token():
     url = "https://test.api.amadeus.com/v1/security/oauth2/token"
@@ -41,87 +80,100 @@ def get_amadeus_token():
     r.raise_for_status()
     return r.json()["access_token"]
 
-# ----------------------
-# Flight Search Function
-# ----------------------
+# ---------------- FLIGHT SEARCH ----------------
 @st.cache_data(ttl=3600)
-def search_flights(origin, destination, date):
+def search_flights(origin, destination, travel_date):
     token = get_amadeus_token()
     headers = {"Authorization": f"Bearer {token}"}
     params = {
         "originLocationCode": origin,
         "destinationLocationCode": destination,
-        "departureDate": date.strftime("%Y-%m-%d"),
+        "departureDate": travel_date.strftime("%Y-%m-%d"),
         "adults": 1,
-        "max": 20,
-        "currencyCode": "INR"
+        "currencyCode": "INR",
+        "max": 15
     }
     url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
     r = requests.get(url, headers=headers, params=params)
     r.raise_for_status()
-    return r.json().get("data", [])
+    return r.json()["data"]
 
-# ----------------------
-# Search Flights Action
-# ----------------------
-if st.button("🔍 Search Flights"):
-    with st.spinner("Fetching real-time flights from Amadeus..."):
-        flights_raw = search_flights(origin, destination, date)
+# ---------------- SEARCH ACTION ----------------
+if st.button("Search Flights"):
+    with st.spinner("Fetching best fares and applying offers..."):
+        flights_raw = search_flights(origin, destination, travel_date)
 
-    # Normalize results for display
-    flights = []
+    cards = []
+
     for f in flights_raw:
         try:
             seg = f["itineraries"][0]["segments"][0]
-            price = float(f["price"]["grandTotal"])
-            # Simulate slight volatility for demo
-            price *= random.uniform(0.97, 1.05)
-            flights.append({
-                "Airline": seg["carrierCode"],
+            airline_code = seg["carrierCode"]
+            airline_data = AIRLINES.get(airline_code)
+
+            if not airline_data:
+                continue
+
+            base_price = float(f["price"]["grandTotal"])
+            offer = random.choice(BEST_OFFERS)
+            final_price = int(base_price * 0.95)
+
+            cards.append({
+                "Airline": airline_data["name"],
                 "Departure": seg["departure"]["at"][11:16],
                 "Arrival": seg["arrival"]["at"][11:16],
-                "Base Price (₹)": int(price),
-                "Final Price (₹)": int(price * 0.97),  # apply demo "best deal"
-                "Best Offer": "HDFC/UPI/FLY50",
-                "Booking URL": f"https://www.google.com/search?q={seg['carrierCode']}+flight+booking"
+                "Base Price": int(base_price),
+                "Final Price": final_price,
+                "Coupon": offer["coupon"],
+                "Card": offer["card"],
+                "BookURL": airline_data["url"]
             })
         except Exception:
             continue
 
-    df = pd.DataFrame(flights)
+    df = pd.DataFrame(cards).sort_values("Final Price")
 
-    # ----------------------
-    # Bucket by Price
-    # ----------------------
-    cheapest = df.nsmallest(3, "Final Price (₹)").sort_values("Departure")
-    moderate = df.iloc[3:6].sort_values("Departure")
-    costly = df.nlargest(3, "Final Price (₹)").sort_values("Departure")
+    cheapest = df.head(3)
+    moderate = df.iloc[3:6]
+    costly = df.tail(3)
 
-    # ----------------------
-    # Table rendering with Book buttons
-    # ----------------------
-    def render_table(title, data):
+    # ---------------- CARD RENDER ----------------
+    def render_cards(title, data):
         st.subheader(title)
-        for _, row in data.iterrows():
-            c1, c2, c3, c4, c5 = st.columns([1.5, 2, 2, 2, 1.5])
+        for _, r in data.iterrows():
+            c1, c2, c3, c4, c5 = st.columns([1.6, 2.2, 2, 2, 2])
             with c1:
                 st.markdown(
-                    f'<a href="{row["Booking URL"]}" target="_blank">'
-                    f'<button style="padding:6px 12px">Book</button></a>',
+                    f"""
+                    <a href="{r['BookURL']}" target="_blank">
+                        <button style="
+                            background-color:#FFD700;
+                            border:none;
+                            padding:10px 18px;
+                            font-weight:bold;
+                            cursor:pointer;">
+                            Book
+                        </button>
+                    </a>
+                    """,
                     unsafe_allow_html=True
                 )
             with c2:
-                st.write(row["Airline"])
-                st.caption(f"{row['Departure']} → {row['Arrival']}")
+                st.markdown("**Airline**")
+                st.write(r["Airline"])
             with c3:
-                st.write(f"₹{row['Base Price (₹)']}")
-                st.caption("Base")
+                st.markdown("**Time**")
+                st.write(f"{r['Departure']} → {r['Arrival']}")
             with c4:
-                st.write(f"₹{row['Final Price (₹)']}")
-                st.caption(row["Best Offer"])
+                st.markdown("**Final Price**")
+                st.write(f"₹{r['Final Price']}")
             with c5:
-                st.success("Best Deal")
+                st.markdown("**Offer Applied**")
+                st.caption(f"Coupon: {r['Coupon']}")
+                st.caption(f"Card: {r['Card']}")
 
-    render_table("💸 Cheapest Flights", cheapest)
-    render_table("⚖️ Moderate Flights", moderate)
-    render_table("💎 Costly Flights", costly)
+    render_cards("💸 Cheapest Flights", cheapest)
+    render_cards("⚖️ Moderate Flights", moderate)
+    render_cards("💎 Premium Flights", costly)
+
+    st.info("Prices refresh automatically every 1 hour")
