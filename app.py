@@ -108,7 +108,7 @@ with col2:
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
-    dep_date = st.date_input("Departure Date", min_value=date.today() + timedelta(days=1))
+    dep_date = st.date_input("Departure Date", min_value=date.today())
 with c2:
     adults = st.number_input("Adults", 1, 9, 1)
 with c3:
